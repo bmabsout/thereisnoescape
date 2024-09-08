@@ -24,14 +24,10 @@
             sudo ${pkgs.iproute2}/bin/ip netns del vpn 2>/dev/null || true
             sudo ${pkgs.iproute2}/bin/ip link del veth0 2>/dev/null || true
             sudo ${pkgs.iptables}/bin/iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o "$INTERFACE" -j MASQUERADE 2>/dev/null || true
-            if [ -f "$WG_CONFIG" ]; then
-              sudo rm -f "$WG_CONFIG"
-            fi
           }
 
-          setup_namespace() {
-            sudo ${pkgs.iproute2}/bin/ip netns del vpn 2>/dev/null || true
-            sudo ${pkgs.iproute2}/bin/ip link del veth0 2>/dev/null || true
+          create_network_namespace() {
+            echo "Creating network namespace..."
             sudo ${pkgs.iproute2}/bin/ip netns add vpn
             sudo ${pkgs.iproute2}/bin/ip link add veth0 type veth peer name veth1
             sudo ${pkgs.iproute2}/bin/ip link set veth1 netns vpn
@@ -40,11 +36,17 @@
             sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.iproute2}/bin/ip addr add 10.0.0.2/24 dev veth1
             sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.iproute2}/bin/ip link set veth1 up
             sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.iproute2}/bin/ip route add default via 10.0.0.1
+
+            # Enable IP forwarding
+            echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward > /dev/null
+
+            # Set up NAT
+            sudo ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o "$INTERFACE" -j MASQUERADE
           }
 
           usage() {
             echo "Usage: $0 -c <config_file> [command]"
-            echo "  -c <config_file>  Specify the WireGuard configuration file"
+            echo "  -c <config_file>  Specify the WireGuard configuration file (full path)"
             echo "  [command]         Optional command to run in the VPN namespace"
             exit 1
           }
@@ -62,38 +64,41 @@
             usage
           fi
 
+          # Ensure CONFIG_FILE is an absolute path
+          CONFIG_FILE=$(realpath "$CONFIG_FILE")
+
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "Error: Configuration file '$CONFIG_FILE' not found."
             exit 1
           fi
 
+          # Debug output
+          echo "Debug: CONFIG_FILE = $CONFIG_FILE"
+          echo "Debug: File contents:"
+          cat "$CONFIG_FILE"
+
           trap cleanup EXIT INT TERM
+
+          # Ask for sudo password upfront
+          sudo -v
 
           echo "Attempting to check location before VPN connection:"
           check_location || echo "Skipping initial location check"
 
-          WG_CONFIG="/tmp/wg0.conf"
-          sudo cp "$CONFIG_FILE" "$WG_CONFIG"
-          sudo chmod 600 "$WG_CONFIG"
-
           INTERFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
 
-          setup_namespace
+          create_network_namespace
 
-          echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward > /dev/null
-          sudo ${pkgs.iptables}/bin/iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o "$INTERFACE" -j MASQUERADE
-          sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$WG_CONFIG"
-
-          sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.util-linux}/bin/mount -t tmpfs tmpfs /etc
-          sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.coreutils}/bin/mkdir -p /etc/netns/vpn
-          echo "nameserver 1.1.1.1" | sudo tee /etc/netns/vpn/resolv.conf > /dev/null
+          echo "Setting up WireGuard connection..."
+          echo "Debug: Running command: sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up \"$CONFIG_FILE\""
+          sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$CONFIG_FILE"
 
           echo "Attempting to check location after VPN connection:"
           sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.curl}/bin/curl -s ipinfo.io | ${pkgs.jq}/bin/jq -r '"\(.ip) - \(.city), \(.region), \(.country)"' || echo "Location check failed"
 
           if [ $# -eq 0 ]; then
             echo "Starting shell in VPN namespace. Type 'exit' to leave and clean up."
-            sudo ${pkgs.iproute2}/bin/ip netns exec vpn sudo -u $USER ${pkgs.bashInteractive}/bin/bash --rcfile <(echo "PS1='\[\033[01;32m\](VPN)\[\033[00m\] \u@\h:\w\$ '")
+            sudo ${pkgs.iproute2}/bin/ip netns exec vpn sudo -u $USER ${pkgs.bashInteractive}/bin/bash
           else
             echo "Running command in VPN namespace: $@"
             sudo ${pkgs.iproute2}/bin/ip netns exec vpn sudo -u $USER "$@"
