@@ -29,19 +29,17 @@ This project provides a Nix flake that creates an isolated network namespace wit
    ```
    nix run github:bmabsout/thereisnoescape -- -c /path/to/your/config.conf -- curl ipinfo.io
    ```
-   or
+   or with verbose output:
    ```
-   nix run github:bmabsout/thereisnoescape -- -c /path/to/your/config.ovpn -- curl ipinfo.io
+   nix run github:bmabsout/thereisnoescape -- -v -c /path/to/your/config.conf -- curl ipinfo.io
    ```
 
 3. Or start an interactive shell in the VPN namespace:
    ```
    nix run github:bmabsout/thereisnoescape -- -c /path/to/your/config.conf
    ```
-   or
-   ```
-   nix run github:bmabsout/thereisnoescape -- -c /path/to/your/config.ovpn
-   ```
+
+Note: Use the `-v` flag for verbose output and additional network tests.
 
 ## How it Works
 
