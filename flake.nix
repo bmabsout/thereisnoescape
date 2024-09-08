@@ -1,5 +1,5 @@
 {
-  description = "Run a command or shell under WireGuard VPN in a network namespace";
+  description = "Run a command or shell under WireGuard or OpenVPN in a network namespace";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,8 +38,15 @@
             sudo ${pkgs.iproute2}/bin/ip netns add vpn
             sudo ${pkgs.iproute2}/bin/ip -n vpn link set lo up
 
-            echo "Setting up WireGuard connection..."
-            sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$CONFIG_FILE"
+            echo "Setting up VPN connection..."
+            if [[ "$CONFIG_FILE" == *.conf ]]; then
+              sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.openvpn}/bin/openvpn --config "$CONFIG_FILE" --daemon
+            elif [[ "$CONFIG_FILE" == *.wg ]]; then
+              sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$CONFIG_FILE"
+            else
+              echo "Error: Unsupported configuration file format. Use .conf for OpenVPN or .wg for WireGuard."
+              exit 1
+            fi
 
             echo "Configuring network..."
             MAIN_IF=$(ip route | grep default | awk '{print $5}')
@@ -85,6 +92,11 @@
               echo "Error: Configuration file '$CONFIG_FILE' not found."
               exit 1
             fi
+
+            if [[ "$CONFIG_FILE" != *.conf && "$CONFIG_FILE" != *.wg ]]; then
+              echo "Error: Unsupported configuration file format. Use .conf for OpenVPN or .wg for WireGuard."
+              exit 1
+            }
 
             trap cleanup EXIT INT TERM
 
