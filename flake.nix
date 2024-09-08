@@ -47,7 +47,7 @@
             kill_lingering_processes
             sudo ${ip} netns del vpn 2>/dev/null || true
             sudo ${ip} link del veth0 2>/dev/null || true
-            [ -n "$MAIN_IF" ] && sudo ${iptables} -t nat -D POSTROUTING -s 10.0.0.0/24 -o "$MAIN_IF" -j MASQUERADE 2>/dev/null || true
+            [ -n "$MAIN_IF" ] && sudo ${iptables} -t nat -D POSTROUTING -s 172.31.255.0/24 -o "$MAIN_IF" -j MASQUERADE 2>/dev/null || true
             sudo rm -rf /etc/netns/vpn 2>/dev/null || true
             cleanup_vpn
           }
@@ -116,12 +116,12 @@
             MAIN_IF=$(${ip} route | grep default | awk '{print $5}')
             sudo ${ip} link add veth0 type veth peer name veth1
             sudo ${ip} link set veth1 netns vpn
-            sudo ${ip} addr add 10.0.0.1/24 dev veth0
+            sudo ${ip} addr add 172.31.255.1/24 dev veth0
             sudo ${ip} link set veth0 up
-            sudo ${ip} -n vpn addr add 10.0.0.2/24 dev veth1
+            sudo ${ip} -n vpn addr add 172.31.255.2/24 dev veth1
             sudo ${ip} -n vpn link set veth1 up
-            sudo ${ip} -n vpn route add default via 10.0.0.1
-            sudo ${iptables} -t nat -A POSTROUTING -s 10.0.0.0/24 -o "$MAIN_IF" -j MASQUERADE
+            sudo ${ip} -n vpn route add default via 172.31.255.1
+            sudo ${iptables} -t nat -A POSTROUTING -s 172.31.255.0/24 -o "$MAIN_IF" -j MASQUERADE
             echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward > /dev/null
             sudo mkdir -p /etc/netns/vpn
             echo "nameserver 1.1.1.1" | sudo tee /etc/netns/vpn/resolv.conf > /dev/null
