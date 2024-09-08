@@ -18,22 +18,16 @@ This project provides a Nix flake that creates an isolated network namespace wit
 
 ## Usage
 
-1. Clone this repository:
+1. Prepare your WireGuard configuration file (e.g., `wg0.conf`).
+
+2. Run a command in the VPN namespace:
    ```
-   git clone https://github.com/yourusername/wireguard-vpn-namespace.git
-   cd wireguard-vpn-namespace
+   nix run github:bmabsout/thereisnoescape -- -c /path/to/your/wg0.conf curl ipinfo.io
    ```
 
-2. Prepare your WireGuard configuration file (e.g., `wg0.conf`).
-
-3. Run a command in the VPN namespace:
+3. Or start an interactive shell in the VPN namespace:
    ```
-   nix run . -- -c /path/to/your/wg0.conf curl ipinfo.io
-   ```
-
-4. Or start an interactive shell in the VPN namespace:
-   ```
-   nix run . -- -c /path/to/your/wg0.conf
+   nix run github:bmabsout/thereisnoescape -- -c /path/to/your/wg0.conf
    ```
 
 ## How it Works
