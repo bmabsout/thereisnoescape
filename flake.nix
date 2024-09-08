@@ -30,7 +30,7 @@
             sudo ${pkgs.iproute2}/bin/ip netns del vpn 2>/dev/null || true
             sudo ${pkgs.iproute2}/bin/ip link del veth0 2>/dev/null || true
             [ -n "$MAIN_IF" ] && sudo ${pkgs.iptables}/bin/iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o "$MAIN_IF" -j MASQUERADE 2>/dev/null || true
-            [ "$VPN_TYPE" = "openvpn" ] && sudo pkill -f "openvpn --config $CONFIG_FILE" 2>/dev/null || true
+            cleanup_vpn
           }
 
           usage() {
@@ -41,21 +41,56 @@
             exit 1
           }
 
+          declare -A vpn_setup_functions
+          declare -A vpn_cleanup_functions
+
+          vpn_setup_functions["wireguard"]="setup_wireguard"
+          vpn_setup_functions["openvpn"]="setup_openvpn"
+
+          vpn_cleanup_functions["wireguard"]="cleanup_wireguard"
+          vpn_cleanup_functions["openvpn"]="cleanup_openvpn"
+
+          setup_wireguard() {
+            log "Setting up WireGuard connection..."
+            sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$CONFIG_FILE"
+          }
+
+          setup_openvpn() {
+            log "Setting up OpenVPN connection..."
+            sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.openvpn}/bin/openvpn --config "$CONFIG_FILE" --daemon --log /tmp/openvpn.log
+            for i in {1..30}; do
+              if sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.iproute2}/bin/ip addr show | grep -q "tun0"; then
+                log "OpenVPN connection established."
+                return 0
+              fi
+              sleep 1
+            done
+            echo "Error: OpenVPN connection failed to establish within 30 seconds."
+            return 1
+          }
+
+          cleanup_wireguard() {
+            log "Cleaning up WireGuard connection..."
+            sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick down "$CONFIG_FILE" 2>/dev/null || true
+          }
+
+          cleanup_openvpn() {
+            log "Cleaning up OpenVPN connection..."
+            sudo pkill -f "openvpn --config $CONFIG_FILE" 2>/dev/null || true
+          }
+
           setup_vpn() {
-            log "Setting up $VPN_TYPE connection..."
-            if [ "$VPN_TYPE" = "wireguard" ]; then
-              sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.wireguard-tools}/bin/wg-quick up "$CONFIG_FILE"
+            if [[ -n "''${vpn_setup_functions[$VPN_TYPE]}" ]]; then
+              "''${vpn_setup_functions[$VPN_TYPE]}"
             else
-              sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.openvpn}/bin/openvpn --config "$CONFIG_FILE" --daemon --log /tmp/openvpn.log
-              for i in {1..30}; do
-                if sudo ${pkgs.iproute2}/bin/ip netns exec vpn ${pkgs.iproute2}/bin/ip addr show | grep -q "tun0"; then
-                  log "OpenVPN connection established."
-                  return 0
-                fi
-                sleep 1
-              done
-              echo "Error: OpenVPN connection failed to establish within 30 seconds."
-              return 1
+              echo "Error: Unsupported VPN type: $VPN_TYPE"
+              exit 1
+            fi
+          }
+
+          cleanup_vpn() {
+            if [[ -n "''${vpn_cleanup_functions[$VPN_TYPE]}" ]]; then
+              "''${vpn_cleanup_functions[$VPN_TYPE]}"
             fi
           }
 
