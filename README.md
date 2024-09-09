@@ -41,6 +41,9 @@ This project provides a Nix flake that creates an isolated network namespace wit
 
 Note: Use the `-v` flag for verbose output and additional network tests.
 
+## Available on Flakehub!
+[![FlakeHub](https://img.shields.io/endpoint?url=https://flakehub.com/f/bmabsout/thereisnoescape/badge)](https://flakehub.com/flake/bmabsout/thereisnoescape)
+
 ## How it Works
 
 1. The script creates a new network namespace.
